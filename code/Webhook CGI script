@@ -1,0 +1,60 @@
+#!/usr/bin/python3
+
+import os
+import cgi
+import cgitb
+import MySQLdb
+import passwords
+import json
+import sys
+
+cgitb.enable()
+input_data = sys.stdin.read()
+print("Status: 200 OK")
+print("Content-Type: text/html")
+print()
+
+def handle_POST():
+    conn = MySQLdb.connect(host= passwords.SQL_HOST, user= passwords.SQL_USER,
+            passwd = passwords.SQL_PASSWD, db = "db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM webhookTable;")
+    numRowsData = cursor.fetchall()
+    numRows = numRowsData[0][0]
+    jsonString = json.dumps(input_data)
+    
+    #check if size of table is too big (over 10)
+    if numRows >= 10:
+      cursor.execute("SELECT id FROM webhookTable ORDER BY time;")
+      data = cursor.fetchall()
+      oldest = data[0][0]
+      #deletes oldest row
+      cursor.execute("DELETE FROM webhookTable WHERE id = %s;", (oldest,))
+      #creates new row from github webhook (or any POST command)
+      cursor.execute("INSERT INTO webhookTable (time, body) VALUES (NOW(), %s);", (jsonString,))
+      conn.commit()
+      conn.close()
+    else:
+      cursor.execute("INSERT INTO webhookTable (time, body) VALUES (NOW(), %s);", (jsonString,))
+      conn.commit()
+      conn.close()
+      
+def handle_GET():
+    conn = MySQLdb.connect(host=passwords.SQL_HOST, user=passwords.SQL_USER,
+      passwd = passwords.SQL_PASSWD, db="db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM webhookTable;")
+    data = cursor.fetchall()
+    dataString = ""
+    for row in data:
+      #row id, time of creation, and text body formatted and printed. 10 rows can be printed at once (only 10 rows ever exist)
+      dataString += "<tr> <td><b>row id: " + str(row[0]) + "<br><br> TIME ADDED: </b>" + str(row[1]) + "</td> <td><div><pre><b>BODY</b> " + row[2] + "</pre></div></td></tr
+                      ><hr> "
+    print(dataString)
+    conn.commit()
+    conn.close()
+    
+if os.environ["REQUEST_METHOD"] == "GET":
+    handle_GET()
+if os.environ["REQUEST_METHOD"] == "POST":
+    handle_POST()
